@@ -8,6 +8,28 @@ typedef unsigned long vc_uint32;
 typedef struct memcpy_data_size{
 	int a[16];
 }DATA_SIZE, *P_DATA_SIZE;
+
+void* vmemcpy(void *des,const void *src,size_t len)
+{
+    size_t size=len/4;
+    size_t mod=len%4;
+    int Len=size;
+    int *Des=(int*)des;
+    int *SRC=(int*)src;
+    while(size--)
+        *Des++=*SRC++;
+    if(mod==0)
+        return des;
+    char *t=(char*)src;
+    t+=Len*sizeof(int);
+    char *key=(char*)des;
+    key+=Len*sizeof(int);
+    while(mod--){
+        *key++=*t++;
+    }
+    return des;
+}
+
 void *mymemcpy(void *to, const void *from, size_t size)
 {
 	P_DATA_SIZE dst = (P_DATA_SIZE)to;
@@ -90,6 +112,26 @@ void ncpy(unsigned long len)
 	free(src);
 	return 0;
 }
+void vcpy(unsigned long len)
+{
+    struct timeval start, end;
+	unsigned long diff;
+    char *dst;
+    char *src;
+    vc_uint32 i;
+
+    gettimeofday(&start, NULL);
+    dst = malloc(sizeof(char)*len);
+    src = malloc(sizeof(char)*len);
+    memset(src,0xA0,sizeof(char)*len);
+    vmemcpy(dst,src,sizeof(char)*len);
+    gettimeofday(&end, NULL);
+	diff = 1000000*(end.tv_sec - start.tv_sec)+ end.tv_usec - start.tv_usec;
+    printf("%d, %ld\r\n",len,diff);
+    free(dst);
+	free(src);
+	return 0;
+}
 int main()
 {
     vc_uint32 wLen = 0;
@@ -102,6 +144,9 @@ int main()
     }
     for(i=0;i<=28;i++){
         ncpy(2<<i);
+    }
+    for(i=0;i<=28;i++){
+        vcpy(2<<i);
     }
     return 0;
 }
