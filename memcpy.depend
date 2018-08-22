@@ -1,0 +1,7 @@
+# depslib dependency file v1.0
+1534952261 source:g:\ccode\memcpy\main.c
+	<stdio.h>
+	<string.h>
+	<stdlib.h>
+	<sys/time.h>
+
