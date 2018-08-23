@@ -2,36 +2,62 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/time.h>
-
+#define max_function_rec 100
 typedef unsigned long vc_uint32;
 
 typedef struct memcpy_data_size{
 	int a[16];
 }DATA_SIZE, *P_DATA_SIZE;
 
-void* vmemcpy(void *des,const void *src,size_t len)
+typedef struct function_rec{
+	void *function;
+	char type;	
+}function_rec;
+function_rec gFrec[max_function_rec];
+vc_uint32 rec_idx=0;
+#define DUMP(type, func, call) \
+	printf("%s: func = %p, called by = %p\n", type, func, call)
+
+void __attribute__((__no_instrument_function__))
+__cyg_profile_func_enter(void *this_func, void *call_site)
 {
-    size_t size=len/4;
-    size_t mod=len%4;
-    int Len=size;
-    int *Des=(int*)des;
-    int *SRC=(int*)src;
-    while(size--)
-        *Des++=*SRC++;
-    if(mod==0)
-        return des;
-    char *t=(char*)src;
-    t+=Len*sizeof(int);
-    char *key=(char*)des;
-    key+=Len*sizeof(int);
-    while(mod--){
-        *key++=*t++;
-    }
-    return des;
+    DUMP("entry",this_func, call_site);
+}
+void __attribute__((__no_instrument_function__))
+__cyg_profile_func_exit(void *this_func, void *call_site)
+{
+    DUMP("exit",this_func, call_site);
 }
 
+void function_entry(void*function){
+	if(rec_idx==max_function_rec){
+		rec_idx = 0;
+	}
+	gFrec[rec_idx].function = function;
+	gFrec[rec_idx].type = 0;
+	rec_idx++;
+}
+void function_exit(void*function){
+	if(rec_idx==max_function_rec){
+		rec_idx = 0;
+	}
+	gFrec[rec_idx].function = function;
+	gFrec[rec_idx].type = 1;
+	rec_idx++;
+}
+void *libc_memcpy (void *dest, const void *src, size_t len)
+{
+	function_entry(libc_memcpy);
+	char *d = dest;
+	const char *s = src;
+	while (len--)
+		*d++ = *s++;
+	function_exit(libc_memcpy);
+	return dest;
+}
 void *mymemcpy(void *to, const void *from, size_t size)
 {
+	function_entry(mymemcpy);
 	P_DATA_SIZE dst = (P_DATA_SIZE)to;
 	P_DATA_SIZE src = (P_DATA_SIZE)from;
 	int new_len  = size/sizeof(DATA_SIZE)-1;
@@ -44,9 +70,30 @@ void *mymemcpy(void *to, const void *from, size_t size)
 		*((char *)dst + remain) = *((char *)src + remain);
 		remain--;
 	}
+	function_exit(mymemcpy);
 	return to;
 }
-
+void libc(unsigned long len)
+{	
+    struct timeval start, end;
+	unsigned long diff;
+    char *dst;
+    char *src;
+	function_entry(libc);	
+    vc_uint32 i;
+    gettimeofday(&start, NULL);
+    dst = malloc(sizeof(char)*len);
+    src = malloc(sizeof(char)*len);
+    memset(src,0xA3,sizeof(char)*len);
+    libc_memcpy(dst,src,sizeof(char)*len);
+    gettimeofday(&end, NULL);
+	diff = 1000000*(end.tv_sec - start.tv_sec)+ end.tv_usec - start.tv_usec;
+    printf("%-10d, %ld\r\n",len,diff);
+    free(dst);
+	free(src);
+	function_exit(libc);
+	return 0;
+}
 void cpy(unsigned long len)
 {
     struct timeval start, end;
@@ -61,11 +108,7 @@ void cpy(unsigned long len)
     memcpy(dst,src,sizeof(char)*len);
     gettimeofday(&end, NULL);
 	diff = 1000000*(end.tv_sec - start.tv_sec)+ end.tv_usec - start.tv_usec;
-    if(diff >= 1000){
-        printf("%d, %ld\n",len,diff);
-	}else{
-        printf("%d, %ld\r\n",len,diff);
-    }
+    printf("%-10d, %ld\r\n",len,diff);
     free(dst);
 	free(src);
 	return 0;
@@ -85,7 +128,7 @@ void mycpy(unsigned long len)
     mymemcpy(dst,src,sizeof(char)*len);
     gettimeofday(&end, NULL);
 	diff = 1000000*(end.tv_sec - start.tv_sec)+ end.tv_usec - start.tv_usec;
-    printf("%d, %ld\r\n",len,diff);
+    printf("%-10d, %ld\r\n",len,diff);
     free(dst);
 	free(src);
 	return 0;
@@ -97,7 +140,7 @@ void ncpy(unsigned long len)
     char *dst;
     char *src;
     vc_uint32 i;
-
+		
     gettimeofday(&start, NULL);
     dst = malloc(sizeof(char)*len);
     src = malloc(sizeof(char)*len);
@@ -107,46 +150,39 @@ void ncpy(unsigned long len)
     }
     gettimeofday(&end, NULL);
 	diff = 1000000*(end.tv_sec - start.tv_sec)+ end.tv_usec - start.tv_usec;
-    printf("%d, %ld\r\n",len,diff);
+    printf("%-10d, %ld\r\n",len,diff);
     free(dst);
 	free(src);
 	return 0;
 }
-void vcpy(unsigned long len)
-{
-    struct timeval start, end;
-	unsigned long diff;
-    char *dst;
-    char *src;
-    vc_uint32 i;
+#define START_NUM 1
+#define STOP_NUM 28
 
-    gettimeofday(&start, NULL);
-    dst = malloc(sizeof(char)*len);
-    src = malloc(sizeof(char)*len);
-    memset(src,0xA0,sizeof(char)*len);
-    vmemcpy(dst,src,sizeof(char)*len);
-    gettimeofday(&end, NULL);
-	diff = 1000000*(end.tv_sec - start.tv_sec)+ end.tv_usec - start.tv_usec;
-    printf("%d, %ld\r\n",len,diff);
-    free(dst);
-	free(src);
-	return 0;
-}
 int main()
 {
     vc_uint32 wLen = 0;
     vc_uint32 i;
-    for(i=0;i<=28;i++){
+	
+    for(i=START_NUM;i<=STOP_NUM;i++){
+        libc(2<<i);
+    }
+	printf("------------------------------------------\r\n");
+	for(i=START_NUM;i<=STOP_NUM;i++){
         cpy(2<<i);
     }
-    for(i=0;i<=28;i++){
+	printf("------------------------------------------\r\n");
+    for(i=START_NUM;i<=STOP_NUM;i++){
         mycpy(2<<i);
     }
-    for(i=0;i<=28;i++){
+	printf("------------------------------------------\r\n");
+    for(i=START_NUM;i<=STOP_NUM;i++){
         ncpy(2<<i);
     }
-    for(i=0;i<=28;i++){
-        vcpy(2<<i);
-    }
+	printf("------------------------------------------\r\n");
+	for(i=0;i<max_function_rec;i++){
+		printf("0x%X,%d\r\n",gFrec[i].function,gFrec[i].type);
+		
+	}
+	
     return 0;
 }
